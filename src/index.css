@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  h1, h2, h3, .font-heading {
+    font-family: 'Fredoka', 'Outfit', sans-serif;
+  }
+}
+
+/* Custom scrollbars & canvas smoothness */
+canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
