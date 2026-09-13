@@ -445,25 +445,23 @@ export function getCatLevelStats(tier: CatTier, level: number): CatLevelStats {
   };
 }
 
-// Initial 3 waves as defined in Unity Scene, with continuous scaling beyond
-export const INITIAL_WAVES: WaveConfig[] = [
-  { waveNumber: 1, enemyCount: 5, spawnRate: 0.5, enemyHealthMultiplier: 1.0, enemySpeedMultiplier: 1.0 },
-  { waveNumber: 2, enemyCount: 8, spawnRate: 0.75, enemyHealthMultiplier: 1.2, enemySpeedMultiplier: 1.05 },
-  { waveNumber: 3, enemyCount: 12, spawnRate: 1.0, enemyHealthMultiplier: 1.4, enemySpeedMultiplier: 1.1 },
-];
+/**
+ * Generates wave configurations scaled by wave number, chapter, and fight progression.
+ * Enemies start weak in early chapter 1 fights and become progressively harder.
+ */
+export function getWaveConfig(waveNum: number, chapter: number = 1, fight: number = 1): WaveConfig {
+  const chapterScale = Math.pow(1.26, Math.max(0, chapter - 1));
+  const fightScale = 1 + Math.max(0, fight - 1) * 0.08;
+  const waveHealthBase = 0.85 + (waveNum - 1) * 0.22;
+  const waveSpeedBase = 0.95 + Math.min(0.55, (waveNum - 1) * 0.04);
+  const enemyCountBase = Math.min(30, 4 + waveNum * 2 + Math.floor(fight * 0.7) + (chapter - 1) * 2);
 
-export function getWaveConfig(waveNum: number): WaveConfig {
-  if (waveNum <= INITIAL_WAVES.length) {
-    return INITIAL_WAVES[waveNum - 1];
-  }
-  // Endless scaling waves
-  const scale = waveNum - 3;
   return {
     waveNumber: waveNum,
-    enemyCount: 12 + scale * 3,
-    spawnRate: Math.min(2.0, 1.0 + scale * 0.15),
-    enemyHealthMultiplier: 1.4 + scale * 0.35,
-    enemySpeedMultiplier: Math.min(1.6, 1.1 + scale * 0.05),
+    enemyCount: enemyCountBase,
+    spawnRate: Math.min(2.2, 0.5 + (waveNum - 1) * 0.12 + (chapter - 1) * 0.05),
+    enemyHealthMultiplier: Number((waveHealthBase * chapterScale * fightScale).toFixed(2)),
+    enemySpeedMultiplier: Number(Math.min(1.6, waveSpeedBase * (1 + (chapter - 1) * 0.03)).toFixed(2)),
   };
 }
 

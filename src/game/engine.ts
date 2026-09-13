@@ -29,21 +29,23 @@ import {
   Waypoint,
 } from '../types';
 import { SoundManager } from './audio';
+import { getWavesForFight, getPlayerProfile } from './playerStorage';
 
 export interface GameEngineListener {
   onGoldChanged?: (gold: number) => void;
   onHealthChanged?: (health: number, maxHealth: number) => void;
   onWaveChanged?: (wave: number, inProgress: boolean) => void;
   onGameOver?: () => void;
-  onGameWon?: () => void;
+  onGameWon?: (isFlawless: boolean, wavesCleared: number) => void;
   onCatSelected?: (cat: PlacedCat | null) => void;
   onPathChanged?: (path: Waypoint[]) => void;
   onFlyingPathChanged?: (path: Waypoint[]) => void;
   onObstaclesChanged?: (obstacles: Obstacle[]) => void;
   onClearedObstaclesCountChanged?: (count: number) => void;
+  onFightInfoChanged?: (chapter: number, fight: number, targetWaves: number, isEndless: boolean) => void;
 }
 
-export const ENEMY_ATTACK_CONFIGS: Record<'mouse' | 'rat' | 'boss' | 'bat', {
+export const ENEMY_ATTACK_CONFIGS: Record<'mouse' | 'rat' | 'boss' | 'bat' | 'mini_boss', {
   meleeDamage: number;
   meleeCooldown: number;
   rangedDamage: number;
@@ -73,15 +75,25 @@ export const ENEMY_ATTACK_CONFIGS: Record<'mouse' | 'rat' | 'boss' | 'bat', {
     projColor: '#ea580c',
     projSpeed: 9.5,
   },
-  boss: {
+  mini_boss: {
     meleeDamage: 24,
-    meleeCooldown: 0.9,
-    rangedDamage: 18,
-    rangedRange: 3.5,
-    rangedCooldown: 1.2,
-    pauseDuration: 0.3,
+    meleeCooldown: 0.8,
+    rangedDamage: 16,
+    rangedRange: 3.2,
+    rangedCooldown: 0.95,
+    pauseDuration: 0.22,
+    projColor: '#f97316',
+    projSpeed: 10.5,
+  },
+  boss: {
+    meleeDamage: 38,
+    meleeCooldown: 0.85,
+    rangedDamage: 24,
+    rangedRange: 3.8,
+    rangedCooldown: 1.1,
+    pauseDuration: 0.28,
     projColor: '#a855f7',
-    projSpeed: 8.5,
+    projSpeed: 9.0,
   },
   bat: {
     meleeDamage: 8,
@@ -105,9 +117,16 @@ export class GameEngine {
   private isGameOver: boolean = false;
   private isGameWon: boolean = false;
   private lostLivesThisWave: boolean = false;
+  private lostLivesInFight: boolean = false;
   private healthAtWaveStart: number = INITIAL_HEALTH;
   public gameSpeed: number = 1; // 1x or 2x
   private gameTime: number = 0; // Total accumulated simulation time (scales with gameSpeed)
+
+  // Progression: Chapter & Fight State
+  public chapter: number = 1;
+  public fight: number = 1;
+  public targetWaves: number = 3;
+  public isEndlessMode: boolean = false;
 
   // Dynamic Path for the current round (shared across all waves in this run)
   public pathWaypoints: Waypoint[] = [];
@@ -159,6 +178,27 @@ export class GameEngine {
     this.listeners.onFlyingPathChanged?.(this.flyingWaypoints);
     this.listeners.onObstaclesChanged?.(this.obstacles);
     this.listeners.onClearedObstaclesCountChanged?.(this.clearedObstaclesCount);
+    this.listeners.onFightInfoChanged?.(this.chapter, this.fight, this.targetWaves, this.isEndlessMode);
+  }
+
+  public startFight(chapter: number, fight: number, isEndless: boolean = false) {
+    this.chapter = chapter;
+    this.fight = fight;
+    this.targetWaves = getWavesForFight(chapter);
+    this.isEndlessMode = isEndless;
+    this.lostLivesInFight = false;
+    this.restartGame();
+  }
+
+  public continueEndlessWaves() {
+    this.isEndlessMode = true;
+    this.isGameWon = false;
+    this.listeners.onFightInfoChanged?.(this.chapter, this.fight, this.targetWaves, this.isEndlessMode);
+    this.startNextWave();
+  }
+
+  public isFightFlawless(): boolean {
+    return !this.lostLivesInFight && this.health === this.maxHealth;
   }
 
   /**
@@ -278,7 +318,16 @@ export class GameEngine {
    * Gets more expensive the more obstacles the player removes.
    */
   public getClearObstacleCost(): number {
-    return BASE_CLEAR_OBSTACLE_COST + this.clearedObstaclesCount * CLEAR_OBSTACLE_COST_INCREMENT;
+    const base = BASE_CLEAR_OBSTACLE_COST + this.clearedObstaclesCount * CLEAR_OBSTACLE_COST_INCREMENT;
+    try {
+      const profile = getPlayerProfile();
+      if (profile.purchasedItems?.includes('diamond-pickaxe')) {
+        return Math.round(base * 0.75);
+      }
+    } catch {
+      // ignore
+    }
+    return base;
   }
 
   public getClearedObstaclesCount(): number {
@@ -355,6 +404,18 @@ export class GameEngine {
 
     const initialStats = getCatLevelStats(tier, 1);
 
+    let baseHp = config.maxHp;
+    let blockCap = config.blockCapacity;
+    try {
+      const profile = getPlayerProfile();
+      if (config.catClass === 'tank' && profile.purchasedItems?.includes('iron-fortress-collar')) {
+        baseHp = (baseHp ?? 180) + 60;
+        blockCap = (blockCap ?? 2) + 1;
+      }
+    } catch {
+      // ignore
+    }
+
     const newCat: PlacedCat = {
       id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       tier,
@@ -374,9 +435,9 @@ export class GameEngine {
       healAmount: initialStats.healAmount,
       attackRange: initialStats.attackRange,
       investedGold: config.cost,
-      hp: config.maxHp,
-      maxHp: config.maxHp,
-      blockCapacity: config.blockCapacity,
+      hp: baseHp,
+      maxHp: baseHp,
+      blockCapacity: blockCap,
       blockedEnemyIds: [],
       damageFlashTimer: 0,
     };
@@ -491,7 +552,7 @@ export class GameEngine {
     this.waveInProgress = true;
     this.lostLivesThisWave = false;
     this.healthAtWaveStart = this.health;
-    this.currentWaveConfig = getWaveConfig(this.currentWave);
+    this.currentWaveConfig = getWaveConfig(this.currentWave, this.chapter, this.fight);
     this.enemiesRemainingToSpawn = this.currentWaveConfig.enemyCount;
     this.waveSpawnRate = this.currentWaveConfig.spawnRate;
     this.spawnCooldown = 0.2; // brief pause before first enemy
@@ -508,6 +569,8 @@ export class GameEngine {
     this.waveInProgress = false;
     this.isGameOver = false;
     this.isGameWon = false;
+    this.lostLivesThisWave = false;
+    this.lostLivesInFight = false;
     this.placedCats = [];
     this.enemies = [];
     this.projectiles = [];
@@ -560,41 +623,63 @@ export class GameEngine {
   }
 
   private spawnEnemy() {
-    const baseHealth = 30 * this.currentWaveConfig.enemyHealthMultiplier;
-    const baseSpeed = 2.0 * this.currentWaveConfig.enemySpeedMultiplier;
+    const baseHealth = 26 * this.currentWaveConfig.enemyHealthMultiplier;
+    const baseSpeed = 1.9 * this.currentWaveConfig.enemySpeedMultiplier;
 
-    let enemyType: 'mouse' | 'rat' | 'boss' | 'bat' = 'mouse';
+    let enemyType: 'mouse' | 'rat' | 'boss' | 'bat' | 'mini_boss' = 'mouse';
     let hpMultiplier = 1.0;
     let speedMultiplier = 1.0;
-    let gold = ENEMY_GOLD_REWARD; // 11g (+5% from 10)
+    let gold = ENEMY_GOLD_REWARD; // 11g
     let dmgToPlayer = 1;
     let isFlying = false;
 
-    if (this.currentWave >= 3 && this.enemiesRemainingToSpawn === 0) {
+    // Boss & Mini-Boss rules:
+    // - Every 5 waves: Boss spawns (even more upgraded version, heals player 1 heart on death, only spawns on path)
+    // - Every 3 waves (not multiple of 5): Mini-Boss spawns (deals more damage, more HP, moves faster, only in path, cannot block other units when held)
+    if (this.currentWave % 5 === 0 && this.enemiesRemainingToSpawn === 0) {
       enemyType = 'boss';
-      hpMultiplier = 3.5;
-      speedMultiplier = 0.8;
-      gold = 47; // was 45 (+5%)
+      hpMultiplier = 8.5;
+      speedMultiplier = 1.05;
+      gold = 105 + this.chapter * 15 + this.fight * 4;
       dmgToPlayer = 3;
+      isFlying = false;
+    } else if (this.currentWave % 3 === 0 && this.enemiesRemainingToSpawn === 0) {
+      enemyType = 'mini_boss';
+      hpMultiplier = 4.6;
+      speedMultiplier = 1.30; // Moves faster than normal boss
+      gold = 60 + this.chapter * 10 + this.fight * 3;
+      dmgToPlayer = 2;
+      isFlying = false;
     } else if (this.currentWave >= 2) {
-      // In Wave 2+, spawn rats and flying bats
+      // In Wave 2+, spawn regular mice, rats, and flying bats
       const roll = Math.random();
-      // In Wave 2, guarantee bats appear so player encounters them promptly
-      const forceBat = this.currentWave === 2 && (this.enemiesRemainingToSpawn === 5 || this.enemiesRemainingToSpawn === 2);
+      const forceBat = this.currentWave === 2 && (this.enemiesRemainingToSpawn === 4 || this.enemiesRemainingToSpawn === 1);
       if (forceBat || roll < 0.35) {
         enemyType = 'bat';
         isFlying = true;
         hpMultiplier = 1.15;
         speedMultiplier = 1.35; // Fast aerial movement
-        gold = 16;
+        gold = 16 + this.chapter * 2;
         dmgToPlayer = 1;
-      } else if (roll < 0.7) {
+      } else if (roll < 0.72) {
         enemyType = 'rat';
-        hpMultiplier = 1.8;
+        hpMultiplier = 1.85;
         speedMultiplier = 1.1;
-        gold = 23; // was 22 (+5%)
+        gold = 23 + this.chapter * 3;
+        dmgToPlayer = 1;
+      } else {
+        enemyType = 'mouse';
+        hpMultiplier = 1.0;
+        speedMultiplier = 1.0;
+        gold = ENEMY_GOLD_REWARD + this.chapter;
         dmgToPlayer = 1;
       }
+    } else {
+      enemyType = 'mouse';
+      hpMultiplier = 1.0;
+      speedMultiplier = 1.0;
+      gold = ENEMY_GOLD_REWARD;
+      dmgToPlayer = 1;
     }
 
     const enemyWaypoints = isFlying ? this.flyingWaypoints : this.pathWaypoints;
@@ -628,9 +713,9 @@ export class GameEngine {
 
   private onWaveCompleted() {
     this.waveInProgress = false;
-    let waveReward = BASE_WAVE_REWARD;
-    const isFlawless = !this.lostLivesThisWave && this.health === this.healthAtWaveStart;
-    if (isFlawless) {
+    let waveReward = BASE_WAVE_REWARD + (this.chapter - 1) * 5;
+    const isFlawlessWave = !this.lostLivesThisWave && this.health === this.healthAtWaveStart;
+    if (isFlawlessWave) {
       waveReward += FLAWLESS_WAVE_BONUS;
       this.addFloatingText(`✨ FLAWLESS WAVE! +${FLAWLESS_WAVE_BONUS}g`, 4.5, 3.5, '#34d399');
     }
@@ -640,11 +725,12 @@ export class GameEngine {
     this.listeners.onWaveChanged?.(this.currentWave, false);
     SoundManager.playCoin();
 
-    // Check if player completed the primary campaign (Wave 3) or continuing
-    if (this.currentWave === 3) {
+    // Check if player completed this fight or continuing endless waves
+    if (!this.isEndlessMode && this.currentWave >= this.targetWaves) {
       this.isGameWon = true;
+      const isFightFlawless = !this.lostLivesInFight && this.health === this.maxHealth;
       SoundManager.playVictory();
-      this.listeners.onGameWon?.();
+      this.listeners.onGameWon?.(isFightFlawless, this.currentWave);
     }
   }
 
@@ -706,15 +792,36 @@ export class GameEngine {
         let intercepted = false;
         for (const cat of this.placedCats) {
           if (cat.blockCapacity && (cat.hp ?? 0) > 0) {
+            // Rule: "if a Cat is blocking the mini-boss, it can not block other units"
+            const isHoldingBossOrMini = this.enemies.some(
+              (e) => (e.type === 'mini_boss' || e.type === 'boss') && e.blockedByCatId === cat.id && e.isAlive
+            );
+            if (isHoldingBossOrMini) {
+              // Cat is occupied blocking the mini-boss/boss; cannot block any other units!
+              continue;
+            }
+
             const distToCat = Math.hypot(enemy.worldX - cat.worldX, enemy.worldY - cat.worldY);
             // Intercept when reaching the cat's tile (within 0.65 grid units)
             if (distToCat <= 0.65) {
-              const currentlyBlocked = this.enemies.filter((e) => e.blockedByCatId === cat.id).length;
-              if (currentlyBlocked < cat.blockCapacity) {
-                enemy.blockedByCatId = cat.id;
-                enemy.lastCatAttackTime = this.gameTime;
-                intercepted = true;
-                break;
+              const currentlyBlocked = this.enemies.filter((e) => e.blockedByCatId === cat.id && e.isAlive).length;
+
+              if (enemy.type === 'mini_boss' || enemy.type === 'boss') {
+                // Mini-boss / Boss consumes full cat capacity and can only engage an unburdened cat
+                if (currentlyBlocked === 0) {
+                  enemy.blockedByCatId = cat.id;
+                  enemy.lastCatAttackTime = this.gameTime;
+                  intercepted = true;
+                  break;
+                }
+              } else {
+                // Regular enemies can be blocked if cat has space remaining and isn't holding boss
+                if (currentlyBlocked < cat.blockCapacity) {
+                  enemy.blockedByCatId = cat.id;
+                  enemy.lastCatAttackTime = this.gameTime;
+                  intercepted = true;
+                  break;
+                }
               }
             }
           }
@@ -900,6 +1007,7 @@ export class GameEngine {
 
   private onEnemyReachedEnd(enemy: EnemyInstance) {
     this.lostLivesThisWave = true;
+    this.lostLivesInFight = true;
     this.health = Math.max(0, this.health - enemy.damageToPlayer);
     this.listeners.onHealthChanged?.(this.health, this.maxHealth);
     SoundManager.playDamageTaken();
@@ -953,31 +1061,42 @@ export class GameEngine {
           if (damagedAllies.length > 0) {
             // Heal the ally with the lowest health percentage
             damagedAllies.sort((a, b) => (a.hp! / a.maxHp!) - (b.hp! / b.maxHp!));
-            const targetAlly = damagedAllies[0];
+            
+            let targetsToHeal = [damagedAllies[0]];
+            try {
+              const profile = getPlayerProfile();
+              if (profile.purchasedItems?.includes('angelic-feather') && damagedAllies.length > 1) {
+                targetsToHeal.push(damagedAllies[1]);
+              }
+            } catch {
+              // ignore
+            }
+
             const healAmount = cat.healAmount ?? config.healAmount ?? 35;
-
-            targetAlly.hp = Math.min(targetAlly.maxHp!, targetAlly.hp! + healAmount);
-            cat.totalHealingDone = (cat.totalHealingDone || 0) + healAmount;
             cat.lastAttackTime = this.gameTime;
-            cat.angle = Math.atan2(targetAlly.worldY - catCenterY, targetAlly.worldX - catCenterX);
-
+            cat.angle = Math.atan2(targetsToHeal[0].worldY - catCenterY, targetsToHeal[0].worldX - catCenterX);
             SoundManager.playHeal();
-            this.addFloatingText(`+${healAmount} HP`, targetAlly.worldX, targetAlly.worldY - 0.35, '#4ade80');
 
-            // Divine heal particles
-            for (let p = 0; p < 8; p++) {
-              const ang = Math.random() * Math.PI * 2;
-              this.particles.push({
-                x: targetAlly.worldX * 50 + 25,
-                y: targetAlly.worldY * 50 + 25,
-                vx: Math.cos(ang) * 1.5,
-                vy: -1.2 - Math.random() * 2.0,
-                color: p % 2 === 0 ? '#4ade80' : '#fef08a',
-                size: 3 + Math.random() * 2,
-                alpha: 1,
-                life: 0,
-                maxLife: 0.5,
-              });
+            for (const targetAlly of targetsToHeal) {
+              targetAlly.hp = Math.min(targetAlly.maxHp!, targetAlly.hp! + healAmount);
+              cat.totalHealingDone = (cat.totalHealingDone || 0) + healAmount;
+              this.addFloatingText(`+${healAmount} HP`, targetAlly.worldX, targetAlly.worldY - 0.35, '#4ade80');
+
+              // Divine heal particles
+              for (let p = 0; p < 8; p++) {
+                const ang = Math.random() * Math.PI * 2;
+                this.particles.push({
+                  x: targetAlly.worldX * 50 + 25,
+                  y: targetAlly.worldY * 50 + 25,
+                  vx: Math.cos(ang) * 1.5,
+                  vy: -1.2 - Math.random() * 2.0,
+                  color: p % 2 === 0 ? '#4ade80' : '#fef08a',
+                  size: 3 + Math.random() * 2,
+                  alpha: 1,
+                  life: 0,
+                  maxLife: 0.5,
+                });
+              }
             }
           }
         }
@@ -1470,7 +1589,15 @@ export class GameEngine {
 
     // 2. Mage Area of Effect (AoE) splash
     if (proj.isAoE && proj.splashRadius) {
-      const splashRadius = proj.splashRadius;
+      let splashRadius = proj.splashRadius;
+      try {
+        const profile = getPlayerProfile();
+        if (profile.purchasedItems?.includes('arcane-orb')) {
+          splashRadius *= 1.30;
+        }
+      } catch {
+        // ignore
+      }
 
       // Arcane ring particles on explosion
       for (let p = 0; p < 10; p++) {
@@ -1526,6 +1653,16 @@ export class GameEngine {
       enemy.isAlive = false;
       this.gold += enemy.goldReward;
       this.listeners.onGoldChanged?.(this.gold);
+
+      // Boss Defeat Reward: heals player 1 heart!
+      if (enemy.type === 'boss') {
+        if (this.health < this.maxHealth) {
+          this.health = Math.min(this.maxHealth, this.health + 1);
+          this.listeners.onHealthChanged?.(this.health, this.maxHealth);
+          this.addFloatingText('+1 ❤️ HEALED!', enemy.worldX, enemy.worldY - 0.7, '#ec4899');
+          SoundManager.playHeal();
+        }
+      }
 
       SoundManager.playCoin();
       this.addFloatingText(`+${enemy.goldReward}g`, enemy.worldX, enemy.worldY - 0.4, '#facc15');

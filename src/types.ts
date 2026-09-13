@@ -69,7 +69,7 @@ export interface EnemyTypeConfig {
 
 export interface EnemyInstance {
   id: string;
-  type: 'mouse' | 'rat' | 'boss' | 'bat';
+  type: 'mouse' | 'rat' | 'boss' | 'bat' | 'mini_boss';
   isFlying?: boolean;
   waypoints?: Waypoint[];
   health: number;

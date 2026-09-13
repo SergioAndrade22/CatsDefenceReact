@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Coins, Swords, Play, FastForward, Volume2, VolumeX, RotateCcw, Dices } from 'lucide-react';
+import { Heart, Coins, Swords, Play, FastForward, Volume2, VolumeX, RotateCcw, Dices, Gem, Home } from 'lucide-react';
 import { SoundManager } from '../game/audio';
 
 interface HUDProps {
@@ -9,10 +9,18 @@ interface HUDProps {
   currentWave: number;
   waveInProgress: boolean;
   gameSpeed: number;
+  chapter?: number;
+  fight?: number;
+  targetWaves?: number;
+  isEndlessMode?: boolean;
+  diamonds?: number;
+  avatarInitial?: string;
   onStartWave: () => void;
   onToggleSpeed: () => void;
   onRestart: () => void;
   onRerollMap?: () => void;
+  onReturnToMenu?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
@@ -22,10 +30,18 @@ export const HUD: React.FC<HUDProps> = ({
   currentWave,
   waveInProgress,
   gameSpeed,
+  chapter = 1,
+  fight = 1,
+  targetWaves = 3,
+  isEndlessMode = false,
+  diamonds,
+  avatarInitial,
   onStartWave,
   onToggleSpeed,
   onRestart,
   onRerollMap,
+  onReturnToMenu,
+  onOpenProfile,
 }) => {
   const [isMuted, setIsMuted] = React.useState(SoundManager.getIsMuted());
 
@@ -40,22 +56,79 @@ export const HUD: React.FC<HUDProps> = ({
     <header className="w-full bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 shadow-md flex items-center justify-between gap-3 select-none">
       {/* Brand & Wave Info */}
       <div className="flex items-center gap-3">
+        {onReturnToMenu && (
+          <button
+            id="hud-home-btn"
+            onClick={onReturnToMenu}
+            title="Return to Main Headquarters"
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+          >
+            <Home className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">HQ</span>
+          </button>
+        )}
+
         <div className="flex items-center gap-2">
           <span className="text-2xl" role="img" aria-label="Cat Defender">🐱</span>
           <div>
-            <h1 className="font-heading font-bold text-lg leading-tight tracking-wide text-white">
-              Cats Defense
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              {currentWave === 0 ? 'Ready for Wave 1' : `Wave ${currentWave}`}
-              {waveInProgress && <span className="ml-1 text-amber-400 animate-pulse">● In Progress</span>}
+            <div className="flex items-center gap-2">
+              <h1 className="font-heading font-bold text-base sm:text-lg leading-tight tracking-wide text-white">
+                Cats Defense
+              </h1>
+              {isEndlessMode ? (
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                  Endless
+                </span>
+              ) : (
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                  Ch.{chapter} F.{fight}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+              {currentWave === 0 ? (
+                <span>Ready for Wave 1</span>
+              ) : isEndlessMode ? (
+                <span>Wave {currentWave}</span>
+              ) : (
+                <span>Wave {currentWave} / {targetWaves}</span>
+              )}
+
+              {/* Boss indicator for upcoming or active wave */}
+              {currentWave > 0 && currentWave % 5 === 0 && (
+                <span className="text-[10px] font-bold text-purple-400 bg-purple-950/70 border border-purple-500/40 px-1 rounded">
+                  👑 Boss (+1 HP)
+                </span>
+              )}
+              {currentWave > 0 && currentWave % 3 === 0 && currentWave % 5 !== 0 && (
+                <span className="text-[10px] font-bold text-amber-400 bg-amber-950/70 border border-amber-500/40 px-1 rounded">
+                  ⚡ Mini-Boss
+                </span>
+              )}
+
+              {waveInProgress && <span className="ml-1 text-emerald-400 animate-pulse">● Battling</span>}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Core Vitals: Gold & Health */}
-      <div className="flex items-center gap-4 sm:gap-6">
+      {/* Core Vitals: Gold, Diamonds & Health */}
+      <div className="flex items-center gap-3 sm:gap-5">
+        {/* Diamonds Counter */}
+        {typeof diamonds === 'number' && (
+          <div
+            id="hud-diamonds-display"
+            onClick={onOpenProfile}
+            title="Diamonds: Tied to player account"
+            className="flex items-center gap-2 bg-slate-800/90 px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 shadow-inner cursor-pointer hover:border-cyan-400/60 transition-all"
+          >
+            <Gem className="w-4 h-4 text-cyan-400 fill-cyan-400/30" />
+            <span className="font-heading font-bold text-base text-cyan-300">
+              {diamonds}
+            </span>
+          </div>
+        )}
+
         {/* Gold Counter */}
         <div 
           id="hud-gold-display" 
@@ -167,6 +240,18 @@ export const HUD: React.FC<HUDProps> = ({
         >
           <RotateCcw className="w-4 h-4" />
         </button>
+
+        {/* Top-Right Avatar button */}
+        {avatarInitial && onOpenProfile && (
+          <button
+            id="hud-avatar-btn"
+            onClick={onOpenProfile}
+            title="Open Commander Profile"
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 text-white font-heading font-extrabold text-xs flex items-center justify-center border border-cyan-300/60 shadow hover:scale-105 active:scale-95 transition-transform"
+          >
+            {avatarInitial}
+          </button>
+        )}
       </div>
     </header>
   );

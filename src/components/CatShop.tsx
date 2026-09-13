@@ -6,6 +6,7 @@ import { Shield, Crosshair, X, Coins, Swords, Sparkles, Skull, Heart, Wand2, Pic
 interface CatShopProps {
   gold: number;
   placingTier: CatTier | null;
+  activeTeam?: CatTier[];
   isClearMode: boolean;
   clearCost: number;
   clearedCount: number;
@@ -17,6 +18,7 @@ interface CatShopProps {
 export const CatShop: React.FC<CatShopProps> = ({
   gold,
   placingTier,
+  activeTeam = [1, 2, 3, 4, 5, 6, 7],
   isClearMode,
   clearCost,
   clearedCount,
@@ -28,7 +30,7 @@ export const CatShop: React.FC<CatShopProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tier = parseInt(e.key, 10) as CatTier;
-      if (tier >= 1 && tier <= 7) {
+      if (tier >= 1 && tier <= 7 && activeTeam.includes(tier)) {
         if (gold >= CAT_CONFIGS[tier].cost) onSelectTier(tier);
       } else if (e.key === 'c' || e.key === 'C') {
         onToggleClearMode();
@@ -42,9 +44,9 @@ export const CatShop: React.FC<CatShopProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gold, isClearMode, onSelectTier, onCancelPlacement, onToggleClearMode]);
+  }, [gold, isClearMode, activeTeam, onSelectTier, onCancelPlacement, onToggleClearMode]);
 
-  const catTiers: CatTier[] = [1, 2, 3, 4, 5, 6, 7];
+  const catTiers: CatTier[] = activeTeam && activeTeam.length > 0 ? activeTeam : [1, 2, 3, 4, 5, 6, 7];
 
   const getClassIcon = (tier: CatTier) => {
     switch (tier) {

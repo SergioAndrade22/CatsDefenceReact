@@ -921,20 +921,40 @@ export function drawEnemy(
     return;
   }
 
+  const isBoss = enemy.type === 'boss';
+  const isMiniBoss = enemy.type === 'mini_boss';
+  const isRat = enemy.type === 'rat';
+
   const ex = enemy.worldX * cellSize + cellSize / 2;
   const ey = enemy.worldY * cellSize + cellSize / 2;
-  const radius = cellSize * 0.28;
+  const radius = isBoss 
+    ? cellSize * 0.42 
+    : isMiniBoss 
+    ? cellSize * 0.35 
+    : isRat 
+    ? cellSize * 0.30 
+    : cellSize * 0.26;
+
   const isChilled = (enemy.chilledTimer ?? 0) > 0;
   const isArmorReduced = (enemy.armorReducedTimer ?? 0) > 0;
 
   ctx.save();
   ctx.translate(ex, ey);
 
-  // Shadow
+  // 1. Ground Shadow (scales with enemy size)
   ctx.beginPath();
-  ctx.ellipse(0, radius * 0.7, radius * 0.8, radius * 0.3, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.ellipse(0, radius * 0.75, radius * 0.85, radius * 0.35, 0, 0, Math.PI * 2);
+  ctx.fillStyle = isBoss ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.4)';
   ctx.fill();
+
+  // Boss pulsing dark aura
+  if (isBoss) {
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 7, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
 
   // Chilled Frost Ring
   if (isChilled) {
@@ -959,77 +979,158 @@ export function drawEnemy(
   // Rotate facing movement
   ctx.rotate(enemy.angle);
 
-  // Damage flash (turns white/bright red)
+  // Damage flash (turns white) or class theme color
   const isFlashing = enemy.damageFlashTimer > 0;
-  ctx.fillStyle = isFlashing
-    ? '#ffffff'
-    : isChilled
-    ? '#38bdf8'
-    : isArmorReduced
-    ? '#84cc16'
-    : '#ef4444'; // Red enemy matching Unity
+  let bodyColor = '#ef4444';
+  let strokeColor = '#b91c1c';
+  let earColor = '#f87171';
 
-  // Mouse / Enemy Body
+  if (isBoss) {
+    bodyColor = '#581c87'; // Regal shadow purple
+    strokeColor = '#a855f7';
+    earColor = '#7e22ce';
+  } else if (isMiniBoss) {
+    bodyColor = '#c2410c'; // Fierce fiery burnt orange
+    strokeColor = '#f97316';
+    earColor = '#ea580c';
+  } else if (isRat) {
+    bodyColor = '#9a3412'; // Sturdy brown rat
+    strokeColor = '#7c2d12';
+    earColor = '#c2410c';
+  }
+
+  if (isFlashing) {
+    bodyColor = '#ffffff';
+    strokeColor = '#f87171';
+    earColor = '#ffffff';
+  } else if (isChilled) {
+    bodyColor = '#38bdf8';
+    strokeColor = '#0284c7';
+    earColor = '#7dd3fc';
+  } else if (isArmorReduced) {
+    bodyColor = '#84cc16';
+    strokeColor = '#4d7c0f';
+    earColor = '#a3e635';
+  }
+
+  // Body
+  ctx.fillStyle = bodyColor;
   ctx.beginPath();
-  ctx.ellipse(0, 0, radius * 1.1, radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, radius * 1.15, radius * 0.82, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = isFlashing ? '#f87171' : isChilled ? '#0284c7' : isArmorReduced ? '#4d7c0f' : '#b91c1c';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = isBoss ? 2.5 : isMiniBoss ? 2.0 : 1.5;
   ctx.stroke();
 
-  // Mouse Ears
-  ctx.fillStyle = isFlashing ? '#ffffff' : isChilled ? '#7dd3fc' : isArmorReduced ? '#a3e635' : '#f87171';
+  // Mouse / Boss Ears
+  ctx.fillStyle = earColor;
   ctx.beginPath();
-  ctx.arc(-radius * 0.4, -radius * 0.7, radius * 0.4, 0, Math.PI * 2);
-  ctx.arc(radius * 0.4, -radius * 0.7, radius * 0.4, 0, Math.PI * 2);
+  ctx.arc(-radius * 0.4, -radius * 0.72, radius * 0.42, 0, Math.PI * 2);
+  ctx.arc(radius * 0.4, -radius * 0.72, radius * 0.42, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
 
-  // Eyes
-  ctx.fillStyle = '#0f172a';
+  // Mini-Boss Spiked Horns or Boss Golden Crown
+  if (isBoss) {
+    // Golden Boss Crown
+    ctx.fillStyle = '#facc15';
+    ctx.beginPath();
+    ctx.moveTo(-radius * 0.5, -radius * 0.85);
+    ctx.lineTo(-radius * 0.5, -radius * 1.35);
+    ctx.lineTo(-radius * 0.25, -radius * 1.05);
+    ctx.lineTo(0, -radius * 1.45);
+    ctx.lineTo(radius * 0.25, -radius * 1.05);
+    ctx.lineTo(radius * 0.5, -radius * 1.35);
+    ctx.lineTo(radius * 0.5, -radius * 0.85);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Crown jewel
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(0, -radius * 1.05, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (isMiniBoss) {
+    // Spiked Warrior Horns
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.moveTo(-radius * 0.55, -radius * 0.7);
+    ctx.lineTo(-radius * 0.75, -radius * 1.25);
+    ctx.lineTo(-radius * 0.35, -radius * 0.8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(radius * 0.55, -radius * 0.7);
+    ctx.lineTo(radius * 0.75, -radius * 1.25);
+    ctx.lineTo(radius * 0.35, -radius * 0.8);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Eyes (Glowing for Bosses)
+  ctx.fillStyle = isBoss ? '#f43f5e' : isMiniBoss ? '#fbbf24' : '#0f172a';
   ctx.beginPath();
-  ctx.arc(radius * 0.4, -radius * 0.1, 2.5, 0, Math.PI * 2);
-  ctx.arc(radius * 0.4, radius * 0.2, 2.5, 0, Math.PI * 2);
+  ctx.arc(radius * 0.45, -radius * 0.12, isBoss ? 3.5 : 2.5, 0, Math.PI * 2);
+  ctx.arc(radius * 0.45, radius * 0.22, isBoss ? 3.5 : 2.5, 0, Math.PI * 2);
   ctx.fill();
 
   // Nose
-  ctx.fillStyle = '#f43f5e';
+  ctx.fillStyle = isBoss ? '#c084fc' : '#f43f5e';
   ctx.beginPath();
-  ctx.arc(radius * 0.95, 0, 2, 0, Math.PI * 2);
+  ctx.arc(radius * 0.98, 0, isBoss ? 3.5 : 2, 0, Math.PI * 2);
   ctx.fill();
 
   // Tail
   ctx.strokeStyle = isChilled ? '#bae6fd' : '#fca5a5';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = isBoss ? 3 : 2;
   ctx.beginPath();
-  ctx.moveTo(-radius * 1.0, 0);
-  ctx.quadraticCurveTo(-radius * 1.6, -radius * 0.4, -radius * 1.8, radius * 0.3);
+  ctx.moveTo(-radius * 1.05, 0);
+  ctx.quadraticCurveTo(-radius * 1.7, -radius * 0.4, -radius * 1.9, radius * 0.35);
   ctx.stroke();
 
   ctx.restore();
 
   // Health Bar (unrotated, above enemy)
-  const hpBarW = cellSize * 0.65;
-  const hpBarH = 5;
+  const hpBarW = cellSize * (isBoss ? 0.95 : isMiniBoss ? 0.80 : 0.65);
+  const hpBarH = isBoss ? 7 : 5;
   const hpBarX = ex - hpBarW / 2;
-  const hpBarY = ey - radius - 10;
+  const hpBarY = ey - radius - (isBoss ? 16 : isMiniBoss ? 14 : 10);
   const hpPercent = Math.max(0, Math.min(1, enemy.health / enemy.maxHealth));
 
   // Background
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
   ctx.fillRect(hpBarX - 1, hpBarY - 1, hpBarW + 2, hpBarH + 2);
 
   // Fill bar
-  ctx.fillStyle = hpPercent > 0.5 ? '#10b981' : hpPercent > 0.25 ? '#f59e0b' : '#ef4444';
+  ctx.fillStyle = isBoss 
+    ? (hpPercent > 0.5 ? '#a855f7' : '#ec4899') 
+    : isMiniBoss 
+    ? (hpPercent > 0.5 ? '#f97316' : '#ef4444')
+    : (hpPercent > 0.5 ? '#10b981' : hpPercent > 0.25 ? '#f59e0b' : '#ef4444');
   ctx.fillRect(hpBarX, hpBarY, hpBarW * hpPercent, hpBarH);
 
-  // Status badges above HP bar (❄️ or 🧪 or 🎯 attacking)
-  const isAttacking = (enemy.attackPauseTimer ?? 0) > 0;
-  if (isChilled || isArmorReduced || isAttacking) {
-    ctx.font = 'bold 9px Outfit, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    const statusIcons = `${isAttacking ? '🎯 ' : ''}${isChilled ? '❄️' : ''}${isArmorReduced ? '🧪' : ''}`;
-    ctx.fillText(statusIcons, ex, hpBarY - 1);
+  // Boss / Mini-Boss Title and Status Badges
+  ctx.font = isBoss ? 'bold 10px Outfit, sans-serif' : 'bold 9px Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+
+  if (isBoss) {
+    ctx.fillStyle = '#f472b6';
+    ctx.fillText('👑 BOSS (+1❤️)', ex, hpBarY - 1);
+  } else if (isMiniBoss) {
+    ctx.fillStyle = '#fb923c';
+    ctx.fillText('⚡ MINI-BOSS', ex, hpBarY - 1);
+  } else {
+    const isAttacking = (enemy.attackPauseTimer ?? 0) > 0;
+    if (isChilled || isArmorReduced || isAttacking) {
+      const statusIcons = `${isAttacking ? '🎯 ' : ''}${isChilled ? '❄️' : ''}${isArmorReduced ? '🧪' : ''}`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(statusIcons, ex, hpBarY - 1);
+    }
   }
 }
 
