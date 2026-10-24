@@ -110,11 +110,40 @@ jobs:
       - name: Run tests
         run: npm run test
 
-  # Future lint job: add `lint` to this needs list and use the same
-  # download/restore steps when the lint toolchain is configured.
+  lint:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download source workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+
+      - name: Restore source workspace
+        run: tar -xzf source-workspace.tar.gz
+
+      - name: Download installed dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: installed-dependencies
+          path: .
+
+      - name: Restore installed dependencies
+        run: tar -xzf node_modules.tar.gz
+
+      - name: Verify installed dependencies
+        run: test -x node_modules/.bin/eslint
+
+      - name: Run lint
+        run: npm run lint
 
   deploy:
-    needs: [build, test]
+    needs: [build, test, lint]
     permissions:
       pages: write
       id-token: write

@@ -1062,7 +1062,7 @@ export class GameEngine {
             // Heal the ally with the lowest health percentage
             damagedAllies.sort((a, b) => (a.hp! / a.maxHp!) - (b.hp! / b.maxHp!));
             
-            let targetsToHeal = [damagedAllies[0]];
+            const targetsToHeal = [damagedAllies[0]];
             try {
               const profile = getPlayerProfile();
               if (profile.purchasedItems?.includes('angelic-feather') && damagedAllies.length > 1) {
