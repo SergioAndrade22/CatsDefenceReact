@@ -21,14 +21,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package workspace
-        run: tar -czf /tmp/workspace.tar.gz --exclude=.git --exclude=dist .
+      - name: Package source workspace
+        run: tar -czf /tmp/source-workspace.tar.gz --exclude=.git --exclude=dist --exclude=node_modules .
 
-      - name: Upload prepared workspace
+      - name: Package installed dependencies
+        run: tar -czf /tmp/node_modules.tar.gz node_modules
+
+      - name: Upload source workspace
         uses: actions/upload-artifact@v4
         with:
-          name: prepared-workspace
-          path: /tmp/workspace.tar.gz
+          name: source-workspace
+          path: /tmp/source-workspace.tar.gz
+          retention-days: 1
+
+      - name: Upload installed dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-dependencies
+          path: /tmp/node_modules.tar.gz
           retention-days: 1
 
   build:
@@ -40,13 +50,25 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Download prepared workspace
+      - name: Download source workspace
         uses: actions/download-artifact@v4
         with:
-          name: prepared-workspace
+          name: source-workspace
 
-      - name: Restore workspace
-        run: tar -xzf workspace.tar.gz
+      - name: Restore source workspace
+        run: tar -xzf source-workspace.tar.gz
+
+      - name: Download installed dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: installed-dependencies
+          path: .
+
+      - name: Restore installed dependencies
+        run: tar -xzf node_modules.tar.gz
+
+      - name: Verify installed dependencies
+        run: test -x node_modules/.bin/vite
 
       - name: Build application
         run: npm run build -- --base=./
@@ -65,13 +87,25 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Download prepared workspace
+      - name: Download source workspace
         uses: actions/download-artifact@v4
         with:
-          name: prepared-workspace
+          name: source-workspace
 
-      - name: Restore workspace
-        run: tar -xzf workspace.tar.gz
+      - name: Restore source workspace
+        run: tar -xzf source-workspace.tar.gz
+
+      - name: Download installed dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: installed-dependencies
+          path: .
+
+      - name: Restore installed dependencies
+        run: tar -xzf node_modules.tar.gz
+
+      - name: Verify installed dependencies
+        run: test -x node_modules/.bin/vitest
 
       - name: Run tests
         run: npm run test
