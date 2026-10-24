@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // GitHub Pages serves this project from /CatsDefenceReact/ rather than the domain root.
+  base: '/CatsDefenceReact/',
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0',
