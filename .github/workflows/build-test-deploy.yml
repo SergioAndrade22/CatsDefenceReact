@@ -1,67 +1,94 @@
 name: build-test-deploy
-on: push
+
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
     steps:
-      - name: Checks out repository code
+      - name: Check out repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-      
-      - run: npm install
-      - run: npm run build
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package workspace
+        run: tar -czf /tmp/workspace.tar.gz --exclude=.git --exclude=dist .
+
+      - name: Upload prepared workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-workspace
+          path: /tmp/workspace.tar.gz
+          retention-days: 1
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download prepared workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-workspace
+
+      - name: Restore workspace
+        run: tar -xzf workspace.tar.gz
+
+      - name: Build application
+        run: npm run build -- --base=./
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
 
   test:
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - name: Checks out repository code
-        uses: actions/checkout@v4
-      
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-      
-      - run: npm install
-      - run: npm run test
+          node-version: '22'
+
+      - name: Download prepared workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-workspace
+
+      - name: Restore workspace
+        run: tar -xzf workspace.tar.gz
+
+      - name: Run tests
+        run: npm run test
+
+  # Future lint job: add `lint` to this needs list and use the same
+  # download/restore steps when the lint toolchain is configured.
 
   deploy:
     needs: [build, test]
     permissions:
-      contents: write
       pages: write
       id-token: write
     environment:
       name: production
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checks out repository code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '25'
-
-      - run: npm install
-
-      - name: Build with base path
-        run: npm run build -- --base=./
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-        
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
